@@ -30,6 +30,18 @@ FocusScope {
     signal closed()
 
     readonly property var t: ui.t
+    readonly property bool win: ui.platform === "windows"
+    readonly property bool atTop: win ? folder === "" : folder === "/"   // nothing above this
+
+    function parentOf(f) {
+        if (win) {
+            if (/^[A-Za-z]:\/?$/.test(f))
+                return "";                       // above a drive is the list of drives
+            var p = f.slice(0, f.lastIndexOf("/"));
+            return /^[A-Za-z]:$/.test(p) ? p + "/" : p;
+        }
+        return f.slice(0, f.lastIndexOf("/")) || "/";
+    }
     readonly property var rows: mode === "files" ? fileRows(input.text) : appRows(input.text)
 
     function openForCover(title, has) {
@@ -52,7 +64,8 @@ FocusScope {
 
     // ---- building the list -------------------------------------------------
     function appRows(q) {
-        var out = [{ kind: "browse", name: "Browse for a game file…", detail: "Pick an executable, script, AppImage or ROM", tag: "" }];
+        var out = [{ kind: "browse", name: "Browse for a game file…", tag: "",
+                     detail: win ? "Pick the game's .exe or a shortcut to it" : "Pick an executable, script, AppImage or ROM" }];
         var words = q.toLowerCase().split(/\s+/).filter(function (w) { return w; });
         var hits = [];
         for (var i = 0; i < apps.length; i++) {
@@ -86,7 +99,12 @@ FocusScope {
     function fileRows(q) {
         var out = [];
         var covers = purpose === "cover";
-        if (folder !== "/")
+        if (win && folder === "") { // the list of drives
+            for (var d = 0; d < ui.drives.length; d++)
+                out.push({ kind: "dir", name: ui.drives[d], detail: "", tag: "Drive", path: ui.drives[d] });
+            return out;
+        }
+        if (!atTop)
             out.push({ kind: "up", name: "..", detail: "Up one folder", tag: "" });
         q = q.toLowerCase();
         for (var i = 0; i < files.length; i++) {
@@ -97,7 +115,7 @@ FocusScope {
                 continue; // only pictures when choosing a cover
             if (covers && !f.dir) {
                 out.push({ kind: "image", name: f.name, detail: "", tag: f.suffix.toUpperCase(), path: f.path,
-                           icon: "file://" + f.path.split("/").map(encodeURIComponent).join("/") });
+                           icon: Util.fileUrl(f.path) });
                 continue;
             }
             out.push({ kind: f.dir ? "dir" : "file", name: f.name + (f.dir ? "/" : ""), detail: "", tag: f.dir ? "" : f.suffix.toUpperCase(), path: f.path });
@@ -112,7 +130,7 @@ FocusScope {
 
     FolderListModel {
         id: dir
-        folder: "file://" + sheet.folder.split("/").map(encodeURIComponent).join("/")
+        folder: sheet.folder === "" ? "" : Util.fileUrl(sheet.folder)
         showDirsFirst: true
         showHidden: false
         showDotAndDotDot: false
@@ -135,11 +153,15 @@ FocusScope {
 
     function fromFile(path) {
         var base = path.slice(path.lastIndexOf("/") + 1);
-        var where = path.slice(0, path.lastIndexOf("/")) || "/";
+        var where = parentOf(path);
         var dot = base.lastIndexOf(".");
         var ext = dot > 0 ? base.slice(dot + 1).toLowerCase() : "";
         var q = Util.shellQuote(path);
         var d = { title: pretty(base), cwd: where, note: "" };
+        if (win) { // Windows opens any file with whatever it is associated with
+            d.exec = "\"" + path + "\"";
+            return d;
+        }
         if (["exe", "msi", "bat"].indexOf(ext) >= 0) {
             d.exec = "wine " + q;
             d.note = "Windows program: runs with Wine. Change the command to use Proton or another runner.";
@@ -162,7 +184,7 @@ FocusScope {
             mode = "files";
             input.text = "";
         } else if (row.kind === "up") {
-            folder = folder.slice(0, folder.lastIndexOf("/")) || "/";
+            folder = parentOf(folder);
             input.text = "";
         } else if (row.kind === "dir") {
             folder = row.path;
@@ -439,6 +461,7 @@ FocusScope {
                 }
             }
             Item { // dedicated-GPU switch
+                visible: !sheet.win
                 width: parent.width; height: ui.px(30)
                 Rectangle {
                     id: tick

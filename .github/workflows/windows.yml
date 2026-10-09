@@ -1,0 +1,60 @@
+name: Windows build
+
+# Builds Wave-Setup.exe on every push that touches the app, and attaches it
+# to the release when a version tag (v1.2.3) is pushed.
+on:
+  push:
+    branches: [main]
+    paths: ["ui/**", "assets/**", "themes/**", "windows/**", ".github/workflows/windows.yml"]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install build tools
+        run: pip install PySide6-Essentials pyinstaller
+
+      - name: Smoke test (render one frame)
+        run: python windows/wave_app.py --smoke smoke.png
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smoke-frame
+          path: smoke.png
+
+      - name: Build the app
+        run: >
+          pyinstaller --noconfirm --noconsole --name Wave --icon windows/wave.ico
+          --add-data "ui;ui" --add-data "assets;assets" --add-data "themes;themes" --add-data "examples;examples"
+          windows/wave_app.py
+
+      - name: Smoke test the built app
+        shell: bash
+        run: |
+          QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software ./dist/Wave/Wave.exe --smoke built.png
+          test -s built.png
+
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          $env:WAVE_VERSION = if ($env:GITHUB_REF_TYPE -eq "tag") { $env:GITHUB_REF_NAME.TrimStart("v") } else { "0.0.0-dev" }
+          iscc windows\installer.iss
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Wave-Setup
+          path: dist/Wave-Setup.exe
+
+      - name: Attach to the release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/Wave-Setup.exe
+          generate_release_notes: true

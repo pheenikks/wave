@@ -18,6 +18,8 @@ FocusScope {
     property string notice: ""       // shown in the footer (errors, first-run hint)
     property bool active: false      // true while the launcher is on screen
     property var apps: []            // installed applications, for the add sheet
+    property string platform: "linux" // "windows" hides the Linux-only switches
+    property var drives: []          // Windows drive roots, for the file browser
 
     signal launchRequested(var game)
     signal closeRequested()
@@ -884,7 +886,7 @@ FocusScope {
                   on: root.removing !== "" && root.removing === root.currentId, color: "#ff453a" },
                 { id: "colors", icon: "drop", label: "Colours", on: root.flyout === "colors" },
                 { id: "settings", icon: "gear", label: "Settings", on: root.flyout === "settings" }
-            ]
+            ].filter(function (i) { return !(root.platform === "windows" && i.id === "gpu"); })
             onTriggered: id => root.dockAction(id)
         }
 

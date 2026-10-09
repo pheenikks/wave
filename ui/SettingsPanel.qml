@@ -14,7 +14,8 @@ Rectangle {
     readonly property string fg: t.colors.dockText
 
     // Each switch: where it lives in the config and what flipping it writes.
-    readonly property var rows: [
+    readonly property var rows: allRows.filter(function (r) { return !(r.linuxOnly && ui.platform === "windows"); })
+    readonly property var allRows: [
         { label: "Side panel labels", on: cfg.features.dockLabels, feature: "dockLabels" },
         { label: "Big title", on: cfg.features.hero, feature: "hero" },
         { label: "Background scene", on: cfg.features.scene, feature: "scene" },
@@ -25,9 +26,9 @@ Rectangle {
         { label: "Opening animation", on: cfg.animation.intro, key: "animation", value: Util.merge(cfg.animation, { intro: !cfg.animation.intro }) },
         { label: "Wrap around the shelf", on: cfg.wrap, key: "wrap", value: !cfg.wrap },
         { label: "Close after launching", on: cfg.closeOnLaunch, key: "closeOnLaunch", value: !cfg.closeOnLaunch },
-        { label: "Dedicated GPU for every game", on: cfg.primeAll, key: "primeAll", value: !cfg.primeAll },
-        { label: "GameMode for every game", on: cfg.gamemode, key: "gamemode", value: !cfg.gamemode },
-        { label: "Quiet Steam launch", on: cfg.steamQuiet, key: "steamQuiet", value: !cfg.steamQuiet },
+        { label: "Dedicated GPU for every game", on: cfg.primeAll, key: "primeAll", value: !cfg.primeAll, linuxOnly: true },
+        { label: "GameMode for every game", on: cfg.gamemode, key: "gamemode", value: !cfg.gamemode, linuxOnly: true },
+        { label: "Quiet Steam launch", on: cfg.steamQuiet, key: "steamQuiet", value: !cfg.steamQuiet, linuxOnly: true },
         { label: "Keep loaded when closed", on: cfg.preload, key: "preload", value: !cfg.preload },
         { label: "Quit Wave while playing", on: cfg.quitOnLaunch, key: "quitOnLaunch", value: !cfg.quitOnLaunch }
     ]

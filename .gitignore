@@ -2,3 +2,6 @@ __pycache__/
 *.pyc
 *.qmlc
 *.jsc
+dist/
+build/
+*.spec

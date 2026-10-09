@@ -288,9 +288,20 @@ function resolvePath(p, home, base) {
         return p;
     if (p.indexOf("~/") === 0)
         p = home + p.slice(1);
-    if (p.charAt(0) !== "/")
+    if (!isAbsolute(p))
         p = base + "/" + p;
-    return "file://" + p.split("/").map(encodeURIComponent).join("/");
+    return fileUrl(p);
+}
+
+function isAbsolute(p) {
+    return p.charAt(0) === "/" || /^[A-Za-z]:[\\/]/.test(p);
+}
+
+// file:// URL for a path on either Linux (/home/x) or Windows (C:/Users/x).
+function fileUrl(p) {
+    p = String(p).replace(/\\/g, "/");
+    var enc = p.split("/").map(encodeURIComponent).join("/").replace(/^([A-Za-z])%3A/, "$1:");
+    return (p.charAt(0) === "/" ? "file://" : "file:///") + enc;
 }
 
 // What goes in front of a command to run it on the dedicated GPU. The default
