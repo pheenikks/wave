@@ -33,6 +33,7 @@ function defaultConfig() {
         features: {             // switches shown in the settings panel
             dock: true,         // the side panel
             dockLabels: true,
+            dockAutoHide: true, // side panel stays tucked away until the mouse reaches the right edge
             hints: false,       // key hints in the footer
             hero: true,         // big title behind the header (themes that have one)
             scene: true,        // drawn backdrop (light shafts, dunes) in themes that have one

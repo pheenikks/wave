@@ -42,6 +42,17 @@ FocusScope {
     readonly property bool glass: t.style.glass
     readonly property bool hero: t.style.hero
     readonly property bool dockOn: cfg.features.dock
+    // Auto-hide: the side panel slides in when the mouse reaches the right edge
+    // and stays while it is in use (hovered, drawer open, or a sheet is up).
+    readonly property bool dockWanted: !cfg.features.dockAutoHide || dockZone.hovered || flyout !== "" || adding || removing !== ""
+    property bool dockShown: true
+    property real dockReveal: dockShown ? 1 : 0
+    Behavior on dockReveal { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+    onDockWantedChanged: {
+        if (dockWanted) { dockLinger.stop(); dockShown = true; }
+        else dockLinger.restart();
+    }
+    Timer { id: dockLinger; interval: 450; onTriggered: root.dockShown = root.dockWanted }
     function rad(h) { return Math.min(t.style.radius * s, h / 2); }   // corner radius for a control of height h
 
     readonly property real speed: 1 / Math.max(0.1, cfg.animation.speed)
@@ -86,6 +97,7 @@ FocusScope {
 
     function wake() {
         now = Date.now();
+        dockShown = dockWanted;
         launching = false;
         adding = false;
         flyout = "";
@@ -788,7 +800,7 @@ FocusScope {
                 ui: root
                 size: 16
                 text: index ? "→" : "←"
-                x: index ? panel.width - panel.pad - width - (root.dockOn ? dock.width + root.px(4) : 0) : panel.pad
+                x: index ? panel.width - panel.pad - width - (root.dockOn ? (dock.width + root.px(4)) * root.dockReveal : 0) : panel.pad
                 y: info.y + root.px(12)
                 opacity: arrowArea.containsMouse ? 1 : 0.75
                 visible: root.shown.length > 1
@@ -872,8 +884,9 @@ FocusScope {
             id: dock
             visible: root.dockOn
             ui: root
-            x: parent.width - width
+            x: parent.width - Math.round(width * root.dockReveal)
             y: Math.round((parent.height - height) / 2 - root.px(4))
+            opacity: Math.min(1, root.dockReveal * 3)
             labels: root.cfg.features.dockLabels
             items: [
                 { id: "add", icon: "plus", label: "Add", on: root.adding },
@@ -888,6 +901,24 @@ FocusScope {
                 { id: "settings", icon: "gear", label: "Settings", on: root.flyout === "settings" }
             ].filter(function (i) { return !(root.platform === "windows" && i.id === "gpu"); })
             onTriggered: id => root.dockAction(id)
+        }
+
+        Rectangle { // what is left of the side panel while it is tucked away
+            visible: root.dockOn && root.dockReveal < 0.99
+            opacity: (1 - root.dockReveal) * 0.85
+            x: parent.width - width - root.px(5)
+            y: dock.y + (dock.height - height) / 2
+            width: root.px(5); height: root.px(84); radius: width / 2
+            color: root.t.colors.dock
+            border { width: 1; color: Util.alpha(root.t.colors.dockText, 0.35) }
+        }
+        Item { // the strip that brings it back; covers the panel once it is out
+            x: parent.width - width
+            y: dock.y - root.px(40)
+            width: root.dockShown ? dock.width + root.px(36) : root.px(22)
+            height: dock.height + root.px(80)
+            visible: root.dockOn
+            HoverHandler { id: dockZone }
         }
 
         AddSheet {

@@ -16,6 +16,7 @@ Rectangle {
     // Each switch: where it lives in the config and what flipping it writes.
     readonly property var rows: allRows.filter(function (r) { return !(r.linuxOnly && ui.platform === "windows"); })
     readonly property var allRows: [
+        { label: "Auto-hide side panel", on: cfg.features.dockAutoHide, feature: "dockAutoHide" },
         { label: "Side panel labels", on: cfg.features.dockLabels, feature: "dockLabels" },
         { label: "Big title", on: cfg.features.hero, feature: "hero" },
         { label: "Background scene", on: cfg.features.scene, feature: "scene" },
