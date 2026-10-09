@@ -30,7 +30,7 @@
 
 # Compatibility
 
-**So far, Wave works with Steam, 
+**So far, Wave works with all games that are downloaded onto the device. Even with Steam, Heroic Games, Prism, etc.**
 
 ---
 
