@@ -90,6 +90,11 @@ Canvas {
         case "right":
             c.beginPath(); c.moveTo(9.5, 6); c.lineTo(15.5, 12); c.lineTo(9.5, 18); c.stroke();
             break;
+        case "image":
+            c.strokeRect(4, 5.5, 16, 13);
+            c.beginPath(); c.arc(9, 10, 1.6, 0, Math.PI * 2); c.stroke();
+            c.beginPath(); c.moveTo(4.5, 17); c.lineTo(10, 12.5); c.lineTo(13, 15); c.lineTo(16, 12); c.lineTo(19.5, 15.5); c.stroke();
+            break;
         case "check":
             c.beginPath(); c.moveTo(5.5, 12.5); c.lineTo(10, 17); c.lineTo(18.5, 7.5); c.stroke();
             break;

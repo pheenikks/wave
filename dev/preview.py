@@ -129,6 +129,16 @@ def main():
             item.setProperty("theme", load(ROOT / "themes" / f"{config['theme']}.json", {}))
 
     item.configEdited.connect(edit)
+    def cover(gid, path):
+        for g in games:
+            if slug(g.get("id") or g["title"]) == gid:
+                if path:
+                    g["cover"] = path
+                else:
+                    g.pop("cover", None)
+        item.setProperty("games", games)
+
+    item.coverChanged.connect(cover)
     item.primeToggled.connect(prime)
     item.addRequested.connect(add)
     item.removeRequested.connect(remove)

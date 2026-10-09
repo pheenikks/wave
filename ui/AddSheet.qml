@@ -19,13 +19,31 @@ FocusScope {
     property bool primeOn: false       // "run on the dedicated GPU" for the game being added
     property int index: 0
 
+    // "game" adds a game; "cover" only picks an image for an existing one
+    property string purpose: "game"
+    property string coverFor: ""       // title of the game getting a cover
+    property bool hasCover: false      // it already has one (offers "remove")
+    readonly property var imageTypes: ["png", "jpg", "jpeg", "webp", "bmp", "gif", "avif"]
+
     signal accepted(var entry)
+    signal coverPicked(string path)    // "" removes the custom cover
     signal closed()
 
     readonly property var t: ui.t
     readonly property var rows: mode === "files" ? fileRows(input.text) : appRows(input.text)
 
+    function openForCover(title, has) {
+        purpose = "cover";
+        coverFor = title;
+        hasCover = has;
+        mode = "files";
+        input.text = "";
+        index = rows.length > 1 && rows[0].kind === "up" ? 1 : 0;
+        input.forceActiveFocus();
+    }
+
     function open() {
+        purpose = "game";
         mode = "apps";
         input.text = "";
         index = 0;
@@ -67,6 +85,7 @@ FocusScope {
 
     function fileRows(q) {
         var out = [];
+        var covers = purpose === "cover";
         if (folder !== "/")
             out.push({ kind: "up", name: "..", detail: "Up one folder", tag: "" });
         q = q.toLowerCase();
@@ -74,8 +93,17 @@ FocusScope {
             var f = files[i];
             if (q && f.name.toLowerCase().indexOf(q) < 0)
                 continue;
+            if (covers && !f.dir && imageTypes.indexOf(f.suffix.toLowerCase()) < 0)
+                continue; // only pictures when choosing a cover
+            if (covers && !f.dir) {
+                out.push({ kind: "image", name: f.name, detail: "", tag: f.suffix.toUpperCase(), path: f.path,
+                           icon: "file://" + f.path.split("/").map(encodeURIComponent).join("/") });
+                continue;
+            }
             out.push({ kind: f.dir ? "dir" : "file", name: f.name + (f.dir ? "/" : ""), detail: "", tag: f.dir ? "" : f.suffix.toUpperCase(), path: f.path });
         }
+        if (covers && hasCover && !q) // last, so Enter never lands on it by accident
+            out.push({ kind: "clear", name: "Remove the custom cover", detail: "Go back to the drawn box art", tag: "" });
         return out;
     }
 
@@ -139,6 +167,10 @@ FocusScope {
         } else if (row.kind === "dir") {
             folder = row.path;
             input.text = "";
+        } else if (row.kind === "image") {
+            coverPicked(row.path);
+        } else if (row.kind === "clear") {
+            coverPicked("");
         } else {
             if (row.kind === "app")
                 draft = { title: row.app.name, exec: String(row.app.exec || "").replace(/%%/g, "\u0000").replace(/\s*%[a-zA-Z]/g, "").replace(/\u0000/g, "%").trim(), icon: row.app.icon || "", cover: row.app.cover || "", logo: row.app.logo || "", group: row.app.group || "",
@@ -185,7 +217,7 @@ FocusScope {
         if (mode === "confirm") {
             mode = backTo;
             input.forceActiveFocus();
-        } else if (mode === "files") {
+        } else if (mode === "files" && purpose === "game") {
             mode = "apps";
             input.text = "";
         } else {
@@ -227,7 +259,8 @@ FocusScope {
             elide: Text.ElideMiddle
             color: sheet.ui.accentText
             font.capitalization: Font.MixedCase
-            text: sheet.mode === "files" ? "ADD A GAME  /  " + sheet.folder.replace(sheet.homeDir, "~")
+            text: sheet.purpose === "cover" ? "COVER FOR " + sheet.coverFor.toUpperCase() + "  /  " + sheet.folder.replace(sheet.homeDir, "~")
+                : sheet.mode === "files" ? "ADD A GAME  /  " + sheet.folder.replace(sheet.homeDir, "~")
                 : sheet.mode === "confirm" ? "ADD A GAME  /  CHECK THE DETAILS" : "ADD A GAME"
         }
         Label {
@@ -235,7 +268,7 @@ FocusScope {
             ui: sheet.ui
             anchors { right: parent.right; rightMargin: card.pad; verticalCenter: heading.verticalCenter }
             color: t.colors.muted
-            text: sheet.mode === "apps" ? "Esc / Cancel" : "Esc / Back"
+            text: sheet.mode === "apps" || sheet.purpose === "cover" ? "Esc / Cancel" : "Esc / Back"
             MouseArea { anchors.fill: parent; anchors.margins: -ui.px(8); onClicked: sheet.back() }
         }
 
@@ -253,7 +286,7 @@ FocusScope {
                 Text {
                     anchors { left: parent.left; leftMargin: ui.px(14); verticalCenter: parent.verticalCenter }
                     visible: input.text === ""
-                    text: sheet.mode === "files" ? "Type to filter this folder" : "Type an app name or a command"
+                    text: sheet.purpose === "cover" ? "Type to filter the pictures in this folder" : sheet.mode === "files" ? "Type to filter this folder" : "Type an app name or a command"
                     color: t.colors.muted
                     font: input.font
                 }
@@ -325,7 +358,7 @@ FocusScope {
                         width: Math.min(implicitWidth, parent.width * 0.55)
                         elide: Text.ElideRight
                         text: row.modelData.name
-                        color: row.modelData.kind === "browse" || row.modelData.kind === "command" ? sheet.ui.accentText : t.colors.text
+                        color: row.modelData.kind === "browse" || row.modelData.kind === "command" || row.modelData.kind === "clear" ? sheet.ui.accentText : t.colors.text
                         font { family: t.fonts.label; pixelSize: ui.px(15); weight: Font.Medium }
                     }
                     Text {

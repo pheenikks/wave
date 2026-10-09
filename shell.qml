@@ -145,6 +145,20 @@ ShellRoot {
         saveGames();
     }
 
+    function setCover(id, path) {
+        games = games.map(function (g) {
+            if (Util.gameId(g) !== id)
+                return g;
+            var next = Object.assign({}, g);
+            if (path)
+                next.cover = path;
+            else
+                delete next.cover;
+            return next;
+        });
+        saveGames();
+    }
+
     function togglePrime(id) {
         games = games.map(function (g) {
             if (Util.gameId(g) !== id)
@@ -293,6 +307,7 @@ ShellRoot {
                     onAddRequested: entry => root.addGame(entry)
                     onRemoveRequested: id => root.removeGame(id)
                     onPrimeToggled: id => root.togglePrime(id)
+                    onCoverChanged: (id, path) => root.setCover(id, path)
                     onConfigEdited: (key, value) => root.setConfig(key, value)
                 }
             }

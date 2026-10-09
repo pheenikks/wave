@@ -26,6 +26,7 @@ FocusScope {
     signal addRequested(var entry)
     signal removeRequested(string id)
     signal primeToggled(string id)
+    signal coverChanged(string id, string path)   // "" clears it
     signal configEdited(string key, var value)   // a top-level config key was changed in the UI
 
     // ---- resolved settings ---------------------------------------------
@@ -157,9 +158,18 @@ FocusScope {
         case "sort": cycleSort(); break;
         case "fav": if (current) favoriteToggled(currentId); break;
         case "gpu": if (current) primeToggled(currentId); break;
+        case "cover": pickCover(); break;
         case "remove": askRemove(); break;
         case "colors": case "settings": flyout = flyout === id ? "" : id; break;
         }
+    }
+
+    function pickCover() {
+        if (!current)
+            return;
+        flyout = "";
+        adding = true;
+        sheet.openForCover(current.title, !!current.cover);
     }
 
     function startAdding() {
@@ -293,6 +303,7 @@ FocusScope {
         case Qt.Key_Delete: root.askRemove(); break;
         case Qt.Key_P: if (root.current) root.primeToggled(root.currentId); break;
         case Qt.Key_C: root.dockAction("colors"); break;
+        case Qt.Key_I: root.pickCover(); break;
         case Qt.Key_Comma: case Qt.Key_O: root.dockAction("settings"); break;
         case Qt.Key_Escape: case Qt.Key_Q: root.closeRequested(); break;
         default:
@@ -868,6 +879,7 @@ FocusScope {
                 { id: "sort", icon: "sort", label: root.sortMode.charAt(0).toUpperCase() + root.sortMode.slice(1), on: root.sortMode !== "manual" },
                 { id: "fav", icon: "star", label: "Favorite", on: !!root.current && root.favorites.indexOf(root.currentId) >= 0, color: "#ffd60a", filled: true },
                 { id: "gpu", icon: "gpu", label: "GPU", on: !!root.current && !!(root.current.prime || root.cfg.primeAll), color: "#30d158", filled: true },
+                { id: "cover", icon: "image", label: "Cover", on: !!root.current && !!root.current.cover },
                 { id: "remove", icon: "trash", label: root.removing !== "" && root.removing === root.currentId ? "Sure?" : "Remove",
                   on: root.removing !== "" && root.removing === root.currentId, color: "#ff453a" },
                 { id: "colors", icon: "drop", label: "Colours", on: root.flyout === "colors" },
@@ -885,6 +897,11 @@ FocusScope {
             groups: Util.groupsOf(root.games, root.cfg.groupOrder)
             homeDir: root.homeDir
             onAccepted: entry => root.finishAdding(entry)
+            onCoverPicked: path => {
+                root.coverChanged(root.currentId, path);
+                root.adding = false;
+                catcher.forceActiveFocus();
+            }
             onClosed: { root.adding = false; catcher.forceActiveFocus(); }
         }
 
