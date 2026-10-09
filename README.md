@@ -1,9 +1,9 @@
 
 # Wave 🌊
 
-## **REQUIREMENTS** ‼️ ‼️
+## **REQUIREMENTS**
 
-**This requires Hyprland and Quickshell until future installation files are made.**
+**Requires Hyprland and Quickshell. Support for other setups is planned.**
 
 --- 
 
@@ -18,9 +18,30 @@
 
 <img width="1778" height="1023" alt="image" src="https://github.com/user-attachments/assets/28c9bbf2-7eb1-441f-9816-b9b9b24672b7" />
 
+# Install
+
+
+```
+curl -fsSL https://raw.githubusercontent.com/pheenikks/wave/main/get.sh | sh
+```
+
+**If the icon doesn't show in your app launcher, restart the launcher.**
+
+**NOTE:** Wave launches on startup, to disable this, run `sed -i '/^exec-once/d' ~/.config/wave/hyprland.conf`.
+
+**NOTE:** If you've disabled Wave launching on startup and would like to enable it again, run `echo 'exec-once = ~/.local/bin/wave start' >> ~/.config/wave/hyprland.conf`.
+
+---
+
 # How to use it.
 
-**Use SUPER + G to open it, or launch from the app directory.**
+**Use SUPER + G to open it, or from your app launcher.**
+
+**Click Add in the side panel (or press N), then pick an app, type a command, or browse to the game’s file.**
+
+---
+
+# Updating / Uninstalling
 
 **To update Wave, use `wave update`.**
 
@@ -30,15 +51,17 @@
 
 # Compatibility
 
-**So far, Wave works with all games that are downloaded onto the device. Even with Steam, Heroic Games, Prism, etc.**
+Wave can launch anything that starts with a command or a file: Steam games, prism launcher, emulators, native games, and Windows games through Wine. Launchers like Heroic should work by adding the game’s launch command, but I haven’t tested them yet.
 
 ---
 
-**Wave was built using Quickshell and uses three different coding languages, these include QML, JavaScript, and Python.**
+# Performance
 
-**One major thing that I noticed with most application launchers is the overconsumption of memory, with this in mind I designed Wave to be super lightweight. When you open Wave, its interface is built, and when you close it, it is thrown away. It uses 0% CPU while hidden, and all the art is drawn immediately instead of being stored.**
+Wave was built using Quickshell and uses three different coding languages, these include QML, JavaScript, and Python.
 
-**I have tested Wave's performance, here are the outputs I was given.**
+One major thing that I noticed with most application launchers is the overconsumption of memory, with this in mind I designed Wave to be super lightweight. When you open Wave, its interface is built, and when you close it, it is thrown away. It uses 0% CPU while hidden, and games without cover art are drawn immediately instead of being stored.
+
+I have tested Wave's performance, here are the outputs I was given.
 
 ### Just started, never opened.
 
@@ -66,7 +89,7 @@ CPU        2.0 %    (averaged over 2 seconds)
 Memory    75.5 MB   (its own: 49.7 MB, with shared libraries counted in full: 160.4 MB)
 CPU        0.0 %    (averaged over 2 seconds)
 ```
-**Tested on 16 GB DDR5, RTX 4050, and Intel Core i5.**
+**Tested on Gentoo with Hyprland 0.56.2 and Quickshell 0.3.1. Intel Core i5, 16 GB DDR5, RTX 4050.**
 
 ---
 
@@ -76,4 +99,4 @@ CPU        0.0 %    (averaged over 2 seconds)
 
 # License
 
-**MIT license, see [LICENSE](/../main/LICENSE).**
+**MIT license, see [LICENSE](LICENSE).**
