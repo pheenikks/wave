@@ -1,0 +1,52 @@
+{
+  "name": "Midnight",
+  "colors": {
+    "backdrop": "#000000",
+    "backdropOpacity": 0.88,
+    "panel": "#1b1b1c",
+    "panelBorder": "#00000000",
+    "text": "#f4f1ea",
+    "muted": "#8d8a84",
+    "line": "#55534f",
+    "accent": "#e9452f",
+    "tapes": [
+      "#c8351f",
+      "#1f4f9f",
+      "#dfae2b",
+      "#1c7559",
+      "#6a2e85",
+      "#d7632b",
+      "#232325",
+      "#0f6c8a",
+      "#a01f49",
+      "#3d4a2a"
+    ],
+    "paper": "#e9e1cd",
+    "cassette": "#121213"
+  },
+  "fonts": {
+    "title": "Instrument Serif",
+    "label": "Space Grotesk",
+    "tapes": [
+      "Anton",
+      "Bebas Neue",
+      "DM Serif Display",
+      "Archivo Black",
+      "Caveat Brush",
+      "Instrument Serif"
+    ]
+  },
+  "sizes": {
+    "title": 38,
+    "label": 11,
+    "panelMargin": 0.085,
+    "panelRadius": 0
+  },
+  "effects": {
+    "grain": 0.07,
+    "wear": 0.55,
+    "scanlines": 0.0,
+    "vignette": 0.45,
+    "gloss": 0.5
+  }
+}

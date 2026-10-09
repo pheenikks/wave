@@ -1,0 +1,49 @@
+{
+  "name": "Rental",
+  "colors": {
+    "backdrop": "#040a1f",
+    "backdropOpacity": 0.9,
+    "panel": "#12286b",
+    "panelBorder": "#00000000",
+    "text": "#fff5d2",
+    "muted": "#93a4d9",
+    "line": "#4a61a8",
+    "accent": "#ffd21f",
+    "tapes": [
+      "#ffd21f",
+      "#e23b2e",
+      "#fff5d2",
+      "#0a1433",
+      "#19a3d6",
+      "#f28c1c",
+      "#2b7d4f",
+      "#c72d6b"
+    ],
+    "paper": "#fff5d2",
+    "cassette": "#0a1433"
+  },
+  "fonts": {
+    "title": "DM Serif Display",
+    "label": "Space Grotesk",
+    "tapes": [
+      "Archivo Black",
+      "Anton",
+      "Bebas Neue",
+      "DM Serif Display",
+      "Caveat Brush"
+    ]
+  },
+  "sizes": {
+    "title": 38,
+    "label": 11,
+    "panelMargin": 0.085,
+    "panelRadius": 0
+  },
+  "effects": {
+    "grain": 0.06,
+    "wear": 0.6,
+    "scanlines": 0.0,
+    "vignette": 0.4,
+    "gloss": 0.5
+  }
+}

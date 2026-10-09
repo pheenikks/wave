@@ -1,0 +1,48 @@
+{
+  "name": "Neon",
+  "colors": {
+    "backdrop": "#04020a",
+    "backdropOpacity": 0.9,
+    "panel": "#130e24",
+    "panelBorder": "#00000000",
+    "text": "#f4ecff",
+    "muted": "#8b80b3",
+    "line": "#4a3e74",
+    "accent": "#ff3d9a",
+    "tapes": [
+      "#ff3d9a",
+      "#19cfee",
+      "#7a4dff",
+      "#ffd23d",
+      "#1c1440",
+      "#ff7a3d",
+      "#17c79d",
+      "#3d5aff"
+    ],
+    "paper": "#f4ecff",
+    "cassette": "#0a0716"
+  },
+  "fonts": {
+    "title": "Instrument Serif",
+    "label": "Space Mono",
+    "tapes": [
+      "Anton",
+      "Bebas Neue",
+      "Archivo Black",
+      "Caveat Brush"
+    ]
+  },
+  "sizes": {
+    "title": 38,
+    "label": 11,
+    "panelMargin": 0.085,
+    "panelRadius": 14
+  },
+  "effects": {
+    "grain": 0.05,
+    "wear": 0.3,
+    "scanlines": 0.14,
+    "vignette": 0.6,
+    "gloss": 0.6
+  }
+}

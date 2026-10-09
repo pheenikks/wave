@@ -1,0 +1,45 @@
+{
+  "theme": "ocean",
+  "title": "WAVE",
+  "tagline": "{count} TITLES / {from} — {to}",
+  "palette": {},
+  "monitor": "",
+  "sort": "manual",
+  "startOn": "last",
+  "wrap": true,
+  "closeOnLaunch": true,
+  "launchPrefix": "",
+  "gamemode": false,
+  "steamQuiet": true,
+  "preload": false,
+  "quitOnLaunch": false,
+  "primeAll": false,
+  "primeCommand": "",
+  "scale": 1.0,
+  "shelf": {
+    "height": 400,
+    "spineWidth": 56,
+    "gap": 16,
+    "coverAspect": 0.64,
+    "spines": "auto"
+  },
+  "animation": { "speed": 1.0, "intro": true },
+  "features": {
+    "dock": true,
+    "dockLabels": true,
+    "hints": false,
+    "hero": true,
+    "scene": true,
+    "motion": true,
+    "grain": true,
+    "wear": true
+  },
+  "groups": {
+    "PC":   { "name": "PC" },
+    "PS2":  { "name": "PlayStation 2" },
+    "GBA":  { "name": "Game Boy Advance" },
+    "SNES": { "name": "Super Nintendo" }
+  },
+  "groupOrder": ["PC", "PS2", "GBA", "SNES"],
+  "overrides": {}
+}

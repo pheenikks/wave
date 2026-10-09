@@ -1,0 +1,59 @@
+{
+  "name": "Ocean",
+  "colors": {
+    "backdrop": "#021026",
+    "backdropOpacity": 0.9,
+    "panelTop": "#2971c1",
+    "panel": "#0c2c5b",
+    "panelBorder": "#73ffffff",
+    "text": "#ffffff",
+    "muted": "#b6c7db",
+    "line": "#7b99bd",
+    "accent": "#a1c6ed",
+    "tapes": [
+      "#2f80d8",
+      "#153a61",
+      "#8db9ea",
+      "#133e75",
+      "#e2edfa",
+      "#e49744"
+    ],
+    "paper": "#f0f6fc",
+    "cassette": "#03112a",
+    "dock": "#000000",
+    "dockText": "#ffffff"
+  },
+  "fonts": {
+    "title": "Montserrat",
+    "titleWeight": 600,
+    "label": "Montserrat",
+    "mono": "Space Mono",
+    "hero": "Montserrat",
+    "tapes": [
+      "Anton",
+      "Bebas Neue",
+      "Archivo Black",
+      "DM Serif Display",
+      "Caveat Brush"
+    ]
+  },
+  "sizes": {
+    "title": 32,
+    "label": 11,
+    "panelMargin": 0.07,
+    "panelRadius": 30
+  },
+  "style": {
+    "glass": true,
+    "radius": 999,
+    "hero": true,
+    "scene": true
+  },
+  "effects": {
+    "grain": 0.03,
+    "wear": 0.28,
+    "scanlines": 0,
+    "vignette": 0.22,
+    "gloss": 0.55
+  }
+}

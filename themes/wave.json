@@ -1,0 +1,60 @@
+{
+  "name": "Wave",
+  "colors": {
+    "backdrop": "#000000",
+    "backdropOpacity": 0.86,
+    "panelTop": "",
+    "panel": "#0b001c",
+    "panelBorder": "#2e0176",
+    "text": "#f6f0ff",
+    "muted": "#7c7389",
+    "line": "#37028c",
+    "accent": "#6203fc",
+    "tapes": [
+      "#6203fc",
+      "#31027e",
+      "#9454fd",
+      "#140132",
+      "#c39ffe",
+      "#1b0147"
+    ],
+    "paper": "#efe6ff",
+    "cassette": "#05000d",
+    "dock": "#000000",
+    "dockText": "#ffffff"
+  },
+  "fonts": {
+    "title": "Instrument Serif",
+    "titleWeight": 400,
+    "label": "Space Grotesk",
+    "mono": "Space Mono",
+    "hero": "Archivo Black",
+    "tapes": [
+      "Anton",
+      "Bebas Neue",
+      "DM Serif Display",
+      "Archivo Black",
+      "Caveat Brush",
+      "Instrument Serif"
+    ]
+  },
+  "sizes": {
+    "title": 38,
+    "label": 11,
+    "panelMargin": 0.085,
+    "panelRadius": 0
+  },
+  "style": {
+    "glass": false,
+    "radius": 0,
+    "hero": false,
+    "scene": false
+  },
+  "effects": {
+    "grain": 0.07,
+    "wear": 0.4,
+    "scanlines": 0,
+    "vignette": 0.55,
+    "gloss": 0.5
+  }
+}

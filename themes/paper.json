@@ -1,0 +1,52 @@
+{
+  "name": "Paper",
+  "colors": {
+    "backdrop": "#cfc9ba",
+    "backdropOpacity": 0.92,
+    "panel": "#f0ebdf",
+    "panelBorder": "#00000000",
+    "text": "#1b1a18",
+    "muted": "#7d776c",
+    "line": "#b9b2a2",
+    "accent": "#d23a1f",
+    "tapes": [
+      "#d23a1f",
+      "#1f4f9f",
+      "#e0aa1e",
+      "#1c7559",
+      "#5d2f7d",
+      "#e0682c",
+      "#1d1d1e",
+      "#0f6c8a",
+      "#a01f49",
+      "#56613a"
+    ],
+    "paper": "#fbf8f0",
+    "cassette": "#1d1d1e"
+  },
+  "fonts": {
+    "title": "Instrument Serif",
+    "label": "Space Grotesk",
+    "tapes": [
+      "Anton",
+      "Bebas Neue",
+      "DM Serif Display",
+      "Archivo Black",
+      "Caveat Brush",
+      "Instrument Serif"
+    ]
+  },
+  "sizes": {
+    "title": 38,
+    "label": 11,
+    "panelMargin": 0.085,
+    "panelRadius": 0
+  },
+  "effects": {
+    "grain": 0.05,
+    "wear": 0.4,
+    "scanlines": 0.0,
+    "vignette": 0.12,
+    "gloss": 0.4
+  }
+}

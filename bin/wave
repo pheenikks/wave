@@ -1,0 +1,424 @@
+#!/usr/bin/env python3
+"""Wave: a tape-shelf game launcher.
+
+  wave                     open or close the launcher (starts it if needed)
+  wave show | hide
+  wave start               start in the background, hidden
+  wave quit
+
+  wave add "Title" --exec "command"   put a game on the shelf
+  wave add --steam APPID              add an installed Steam game
+  wave steam                          list installed Steam games and their APPIDs
+  wave prime "Title"       switch the dedicated GPU (PRIME) on or off for a game
+  wave remove "Title"
+  wave list
+  wave edit                open games.json in $EDITOR
+
+  wave theme [NAME]        list themes, or switch to one
+  wave color PRIMARY [BASE]   recolour with two colours, e.g. wave color '#6203fc' '#000000'
+  wave color --reset
+
+  wave mem                 show how much memory and CPU Wave is using right now
+  wave update              get the newest version and restart
+  wave uninstall           remove Wave (your games and settings are kept)
+"""
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+HOME = Path.home()
+CONF = Path(os.environ.get("XDG_CONFIG_HOME") or HOME / ".config") / "wave"
+QS_CONFIG = os.environ.get("WAVE_CONFIG", "wave")
+REPO = Path(__file__).resolve().parent.parent
+GAMES = CONF / "games.json"
+CONFIG = CONF / "config.json"
+CACHE = Path(os.environ.get("XDG_CACHE_HOME") or HOME / ".cache") / "wave"
+
+
+def die(msg):
+    sys.exit("wave: " + msg)
+
+
+# ---- talking to the running launcher -------------------------------------
+
+def ipc(*args):
+    try:
+        return subprocess.run(["qs", "-c", QS_CONFIG, "ipc", "call", "wave", *args],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+    except FileNotFoundError:
+        die("Quickshell ('qs') is not installed or not on your PATH")
+
+
+def start():
+    subprocess.Popen(["qs", "-c", QS_CONFIG], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, start_new_session=True)
+
+
+def window(action):
+    if ipc(action):
+        return
+    start()  # not running yet
+    want = "show" if action == "toggle" else action
+    for _ in range(50):
+        time.sleep(0.1)
+        if ipc(want):
+            return
+    die(f"the launcher did not come up. Run 'qs -c {QS_CONFIG}' to see why.")
+
+
+# ---- files -----------------------------------------------------------------
+
+def read(path, fallback):
+    try:
+        return json.loads(path.read_text())
+    except FileNotFoundError:
+        return fallback
+    except json.JSONDecodeError as e:
+        die(f"{path} is not valid JSON ({e}). Fix it, or run 'wave edit'.")
+
+
+def write(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # written in place (not replaced) so the running launcher's file watch survives
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+
+
+def slug(s):
+    return re.sub(r"[^a-z0-9]+", "-", str(s).lower()).strip("-")
+
+
+def keep_art(src, game_id, kind):
+    """Copy an image into ~/.config/wave/covers and return the path to store."""
+    src = Path(src).expanduser()
+    if not src.is_file():
+        die(f"no such image: {src}")
+    dest = CONF / "covers" / f"{game_id}{'' if kind == 'cover' else '-' + kind}{src.suffix.lower()}"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if src.resolve() != dest.resolve():
+        shutil.copyfile(src, dest)
+    return str(dest.relative_to(CONF))
+
+
+# ---- Steam -----------------------------------------------------------------
+
+def steam_roots():
+    for p in (HOME / ".local/share/Steam", HOME / ".steam/steam", HOME / ".steam/root",
+              HOME / ".var/app/com.valvesoftware.Steam/.local/share/Steam"):
+        if p.is_dir():
+            yield p.resolve()
+
+
+def steam_lookup(appid):
+    """Title and local artwork for an installed Steam game."""
+    name, art = None, {}
+    for root in dict.fromkeys(steam_roots()):
+        libs = [root]
+        vdf = root / "steamapps/libraryfolders.vdf"
+        if vdf.is_file():
+            libs += [Path(m) for m in re.findall(r'"path"\s+"([^"]+)"', vdf.read_text(errors="ignore"))]
+        for lib in libs:
+            manifest = lib / "steamapps" / f"appmanifest_{appid}.acf"
+            if manifest.is_file() and not name:
+                m = re.search(r'"name"\s+"([^"]+)"', manifest.read_text(errors="ignore"))
+                name = m.group(1) if m else None
+        cache = root / "appcache/librarycache"
+        wanted = {"cover": "library_600x900", "logo": "logo"}
+        for kind, stem in wanted.items():
+            if kind in art:
+                continue
+            found = list(cache.glob(f"{appid}_{stem}.*")) + list((cache / str(appid)).rglob(f"{stem}.*"))
+            if found:
+                art[kind] = found[0]
+    return name, art
+
+
+def steam_art(root, appid):
+    """Cover and logo from Steam's own library cache, if it has them."""
+    cache = root / "appcache/librarycache"
+    art = {}
+    for kind, stem in (("cover", "library_600x900"), ("logo", "logo")):
+        found = sorted(cache.glob(f"{appid}_{stem}.*")) + sorted((cache / str(appid)).rglob(f"{stem}.*"))
+        if found:
+            art[kind] = str(found[0])
+    return art
+
+
+NOT_GAMES = re.compile(r"^(Proton|Steam Linux Runtime|Steamworks Common|Steam Controller)", re.I)
+
+
+def steam_games():
+    """Every installed Steam game: [{appid, name, cover?, logo?}]."""
+    games = {}
+    for root in dict.fromkeys(steam_roots()):
+        libs = [root]
+        vdf = root / "steamapps/libraryfolders.vdf"
+        if vdf.is_file():
+            libs += [Path(m) for m in re.findall(r'"path"\s+"([^"]+)"', vdf.read_text(errors="ignore"))]
+        for lib in dict.fromkeys(libs):
+            for manifest in (lib / "steamapps").glob("appmanifest_*.acf"):
+                text = manifest.read_text(errors="ignore")
+                appid = re.search(r'"appid"\s+"(\d+)"', text)
+                name = re.search(r'"name"\s+"([^"]+)"', text)
+                if not appid or not name or NOT_GAMES.match(name.group(1)) or appid.group(1) in games:
+                    continue
+                games[appid.group(1)] = {"appid": appid.group(1), "name": name.group(1), **steam_art(root, appid.group(1))}
+    return sorted(games.values(), key=lambda g: g["name"].lower())
+
+
+def cmd_scan(_):
+    """Refresh the list the launcher's Add screen offers (called by the launcher)."""
+    write(CACHE / "steam.json", steam_games())
+
+
+def cmd_steam(_):
+    games = steam_games()
+    if not games:
+        print("No installed Steam games found.")
+    for g in games:
+        print(f"{g['appid']:>9}  {g['name']}")
+
+
+# ---- commands --------------------------------------------------------------
+
+def cmd_add(a):
+    games = read(GAMES, [])
+    entry, art = {}, {}
+    if a.steam:
+        name, art = steam_lookup(a.steam)
+        entry["title"] = a.title or name or die(
+            f"could not find Steam app {a.steam} installed; pass a title: wave add \"Title\" --steam {a.steam}")
+        entry["exec"] = f"steam steam://rungameid/{a.steam}"
+        entry["group"] = "Steam"
+    elif not a.title or not a.exec:
+        die('give a title and a command:  wave add "Title" --exec "command"')
+    else:
+        entry["title"] = a.title
+    gid = slug(entry["title"])
+    if any(slug(g.get("id") or g.get("title")) == gid for g in games):
+        die(f"\"{entry['title']}\" is already on the shelf (wave remove it first)")
+    for key in ("exec", "group", "subtitle", "year", "color", "cwd"):
+        if getattr(a, key) is not None:
+            entry[key] = getattr(a, key)
+    for kind in ("cover", "spine", "logo"):
+        src = getattr(a, kind) or art.get(kind)
+        if src:
+            entry[kind] = keep_art(src, gid, kind)
+    if a.prime:
+        entry["prime"] = True
+    games.append(entry)
+    write(GAMES, games)
+    extras = [k for k in ("cover", "spine", "logo") if k in entry]
+    print(f"Added \"{entry['title']}\"" + (f" with {', '.join(extras)}" if extras else " (Wave will draw its artwork)"))
+
+
+def cmd_remove(a):
+    games = read(GAMES, [])
+    gid = slug(a.title)
+    kept = [g for g in games if slug(g.get("id") or g.get("title")) != gid]
+    if len(kept) == len(games):
+        die(f"nothing called \"{a.title}\" on the shelf (see: wave list)")
+    write(GAMES, kept)
+    print(f"Removed \"{a.title}\"")
+
+
+def cmd_prime(a):
+    games = read(GAMES, [])
+    gid = slug(a.title)
+    for g in games:
+        if slug(g.get("id") or g.get("title")) == gid:
+            if g.pop("prime", False):
+                state = "off"
+            else:
+                g["prime"] = True
+                state = "on"
+            write(GAMES, games)
+            print(f"Dedicated GPU {state} for \"{g['title']}\"")
+            return
+    die(f"nothing called \"{a.title}\" on the shelf (see: wave list)")
+
+
+def cmd_list(_):
+    games = read(GAMES, [])
+    if not games:
+        print('The shelf is empty. Add a game:  wave add "Title" --exec "command"')
+    for g in games:
+        print(f"{g.get('title', '?'):<32} {g.get('group', ''):<10} {'[GPU] ' if g.get('prime') else ''}{g.get('exec', '')}")
+
+
+def cmd_edit(_):
+    if not GAMES.exists():
+        write(GAMES, [])
+    os.execvp(os.environ.get("EDITOR", "nano"), [os.environ.get("EDITOR", "nano"), str(GAMES)])
+
+
+def themes():
+    found = {}
+    for d in (REPO / "themes", CONF / "themes"):
+        for f in sorted(d.glob("*.json")):
+            found[f.stem] = f
+    return found
+
+
+def cmd_theme(a):
+    cfg = read(CONFIG, {})
+    if not a.name:
+        for name in themes():
+            print(("* " if name == cfg.get("theme", "wave") else "  ") + name)
+        return
+    if a.name not in themes():
+        die(f"no theme called {a.name} (have: {', '.join(themes())})")
+    cfg["theme"] = a.name
+    write(CONFIG, cfg)
+    print(f"Theme: {a.name}" + ("  (your 'wave color' palette still applies; clear it with: wave color --reset)"
+                               if cfg.get("palette") else ""))
+
+
+def cmd_color(a):
+    cfg = read(CONFIG, {})
+    if a.reset:
+        cfg["palette"] = {}
+        write(CONFIG, cfg)
+        print("Palette cleared")
+        return
+    if not a.primary:
+        die("give one or two colours:  wave color '#6203fc' '#000000'")
+    pal = {}
+    for key, val in (("primary", a.primary), ("base", a.base)):
+        if val is None:
+            continue
+        val = val if val.startswith("#") else "#" + val
+        if not re.fullmatch(r"#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})", val):
+            die(f"{val} is not a hex colour like #6203fc")
+        pal[key] = val.lower()
+    cfg["palette"] = pal
+    write(CONFIG, cfg)
+    print("Palette: " + " + ".join(pal.values()))
+
+
+def running():
+    return ipc("hide")
+
+
+def cmd_mem(_):
+    out = subprocess.run(["pgrep", "-f", "--", f"-c {QS_CONFIG}"], capture_output=True, text=True).stdout.split()
+    pids = [p for p in out if p != str(os.getpid()) and Path(f"/proc/{p}/smaps_rollup").exists()]
+    if not pids:
+        print("Wave is not running (it starts when you press the keybind).")
+        return
+    pid = pids[0]
+
+    def cpu_ticks():
+        f = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+        return int(f[11]) + int(f[12])
+
+    t0 = cpu_ticks()
+    time.sleep(2)
+    cpu = (cpu_ticks() - t0) / os.sysconf("SC_CLK_TCK") / 2 * 100
+    kb = {}
+    for line in Path(f"/proc/{pid}/smaps_rollup").read_text().splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[0].rstrip(":") in ("Pss", "Rss", "Pss_Anon"):
+            kb[parts[0].rstrip(":")] = int(parts[1])
+    print(f"Memory  {kb.get('Pss', 0) / 1024:6.1f} MB   (its own: {kb.get('Pss_Anon', 0) / 1024:.1f} MB, with shared libraries counted in full: {kb.get('Rss', 0) / 1024:.1f} MB)")
+    print(f"CPU     {cpu:6.1f} %    (averaged over 2 seconds)")
+
+
+def cmd_update(_):
+    if not (REPO / ".git").is_dir():
+        die(f"{REPO} was not installed with git, so it cannot update itself")
+    was_running = shutil.which("qs") and running()
+    before = subprocess.run(["git", "-C", str(REPO), "rev-parse", "HEAD"], capture_output=True, text=True).stdout
+    if subprocess.run(["git", "-C", str(REPO), "pull", "--ff-only", "--quiet"]).returncode != 0:
+        die("could not update (local changes in the checkout?)")
+    after = subprocess.run(["git", "-C", str(REPO), "rev-parse", "HEAD"], capture_output=True, text=True).stdout
+    subprocess.run([str(REPO / "install.sh"), "--no-hyprland"], stdout=subprocess.DEVNULL)
+    if was_running:
+        subprocess.run(["qs", "-c", QS_CONFIG, "kill"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        start()
+    print("Already up to date" if before == after else "Wave updated")
+
+
+def cmd_uninstall(_):
+    if shutil.which("qs"):
+        subprocess.run(["qs", "-c", QS_CONFIG, "kill"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    conf_home = CONF.parent
+    hypr = conf_home / "hypr" / "hyprland.conf"
+    if hypr.is_file():
+        lines = hypr.read_text().splitlines(keepends=True)
+        kept = [l for l in lines if "wave/hyprland.conf" not in l and l.strip() != "# Wave game launcher"]
+        if kept != lines:
+            hypr.write_text("".join(kept))
+    for link in (conf_home / "quickshell" / "wave", HOME / ".local/bin/wave"):
+        if link.is_symlink():
+            link.unlink()
+    data = Path(os.environ.get("XDG_DATA_HOME") or HOME / ".local/share")
+    for f in [data / "applications" / "wave.desktop"] + list((data / "icons" / "hicolor").glob("*/apps/wave.png")):
+        if f.is_file():
+            f.unlink()
+    print(f"Wave is uninstalled. Your games and settings are still in {CONF}.")
+    print(f"To remove everything: rm -rf {REPO} {CONF}")
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="wave", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd")
+    for name in ("toggle", "show", "hide", "start", "quit"):
+        sub.add_parser(name)
+    p = sub.add_parser("add", help="put a game on the shelf")
+    p.add_argument("title", nargs="?")
+    p.add_argument("--exec", "-e", help="command that starts the game")
+    p.add_argument("--steam", metavar="APPID", help="installed Steam game; finds its name and artwork")
+    p.add_argument("--group", "-g", help="tab to file it under (PC, PS2, ...)")
+    p.add_argument("--subtitle")
+    p.add_argument("--year", type=int)
+    p.add_argument("--cover", help="cover image (copied into ~/.config/wave/covers)")
+    p.add_argument("--spine", help="spine image")
+    p.add_argument("--logo", help="transparent title logo")
+    p.add_argument("--color", help="box colour when Wave draws the artwork")
+    p.add_argument("--cwd", help="directory to run the command in")
+    p.add_argument("--prime", action="store_true", help="run on the dedicated GPU")
+    p.set_defaults(fn=cmd_add)
+    p = sub.add_parser("remove", help="take a game off the shelf")
+    p.add_argument("title")
+    p.set_defaults(fn=cmd_remove)
+    p = sub.add_parser("prime", help="toggle the dedicated GPU for a game")
+    p.add_argument("title")
+    p.set_defaults(fn=cmd_prime)
+    sub.add_parser("list").set_defaults(fn=cmd_list)
+    sub.add_parser("scan").set_defaults(fn=cmd_scan)
+    sub.add_parser("mem").set_defaults(fn=cmd_mem)
+    sub.add_parser("update").set_defaults(fn=cmd_update)
+    sub.add_parser("uninstall").set_defaults(fn=cmd_uninstall)
+    sub.add_parser("steam").set_defaults(fn=cmd_steam)
+    sub.add_parser("edit").set_defaults(fn=cmd_edit)
+    p = sub.add_parser("theme")
+    p.add_argument("name", nargs="?")
+    p.set_defaults(fn=cmd_theme)
+    p = sub.add_parser("color")
+    p.add_argument("primary", nargs="?")
+    p.add_argument("base", nargs="?")
+    p.add_argument("--reset", action="store_true")
+    p.set_defaults(fn=cmd_color)
+
+    a = ap.parse_args()
+    cmd = a.cmd or "toggle"
+    if cmd in ("toggle", "show", "hide"):
+        window(cmd)
+    elif cmd == "start":
+        start()
+    elif cmd == "quit":
+        subprocess.run(["qs", "-c", QS_CONFIG, "kill"])
+    else:
+        a.fn(a)
+
+
+if __name__ == "__main__":
+    main()

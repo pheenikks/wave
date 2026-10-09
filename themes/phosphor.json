@@ -1,0 +1,45 @@
+{
+  "name": "Phosphor",
+  "colors": {
+    "backdrop": "#000000",
+    "backdropOpacity": 0.93,
+    "panel": "#06110a",
+    "panelBorder": "#1f4a30",
+    "text": "#b8ffce",
+    "muted": "#4f8f66",
+    "line": "#2a593c",
+    "accent": "#3dff8a",
+    "tapes": [
+      "#0f3d22",
+      "#145c30",
+      "#1e7a3f",
+      "#0a2b18",
+      "#2f9a55",
+      "#0c331d"
+    ],
+    "paper": "#b8ffce",
+    "cassette": "#020804"
+  },
+  "fonts": {
+    "title": "Space Mono",
+    "label": "Space Mono",
+    "tapes": [
+      "Space Mono",
+      "Archivo Black",
+      "Bebas Neue"
+    ]
+  },
+  "sizes": {
+    "title": 30,
+    "label": 11,
+    "panelMargin": 0.085,
+    "panelRadius": 22
+  },
+  "effects": {
+    "grain": 0.06,
+    "wear": 0.2,
+    "scanlines": 0.3,
+    "vignette": 0.75,
+    "gloss": 0.3
+  }
+}
