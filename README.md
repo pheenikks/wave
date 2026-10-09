@@ -45,7 +45,7 @@ curl -fsSL https://raw.githubusercontent.com/pheenikks/wave/main/get.sh | sh
 
 # Updating / Uninstalling
 
-**To update Wave, use `wave update`.**
+**To update Wave, use `wave update`, then restart using `pkill -f "qs -c wave"; wave`.**
 
 **To uninstall Wave, use `wave uninstall`.**
 
