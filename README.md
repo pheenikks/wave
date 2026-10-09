@@ -18,7 +18,7 @@
 
 <img width="1778" height="1023" alt="image" src="https://github.com/user-attachments/assets/28c9bbf2-7eb1-441f-9816-b9b9b24672b7" />
 
-# Install
+# Installation / Setup
 
 
 ```
@@ -30,6 +30,8 @@ curl -fsSL https://raw.githubusercontent.com/pheenikks/wave/main/get.sh | sh
 **NOTE:** Wave launches on startup, to disable this, run `sed -i '/^exec-once/d' ~/.config/wave/hyprland.conf`.
 
 **NOTE:** If you've disabled Wave launching on startup and would like to enable it again, run `echo 'exec-once = ~/.local/bin/wave start' >> ~/.config/wave/hyprland.conf`.
+
+**NOTE:** If Super + G does not automatically bind, then run `echo 'bind = SUPER, G, exec, ~/.local/bin/wave' >> ~/.config/hypr/hyprland.conf`.
 
 ---
 
