@@ -20,6 +20,8 @@ FocusScope {
     property var apps: []            // installed applications, for the add sheet
     property string platform: "linux" // "windows" hides the Linux-only switches
     property var drives: []          // Windows drive roots, for the file browser
+    property var steamTools: []      // Proton versions Steam can use: [{ name, label }]
+    property string steamDefaultTool: ""
 
     signal launchRequested(var game)
     signal closeRequested()
@@ -29,6 +31,7 @@ FocusScope {
     signal removeRequested(string id)
     signal primeToggled(string id)
     signal coverChanged(string id, string path)   // "" clears it
+    signal protonChanged(string id, string value) // tool name, "default", or "" to leave it to Steam
     signal configEdited(string key, var value)   // a top-level config key was changed in the UI
 
     // ---- resolved settings ---------------------------------------------
@@ -173,9 +176,54 @@ FocusScope {
         case "fav": if (current) favoriteToggled(currentId); break;
         case "gpu": if (current) primeToggled(currentId); break;
         case "cover": pickCover(); break;
+        case "proton": pickProton(); break;
         case "remove": askRemove(); break;
         case "colors": case "settings": flyout = flyout === id ? "" : id; break;
         }
+    }
+
+    // Proton --------------------------------------------------------------
+    readonly property bool currentIsSteam: !!current && Util.steamAppId(current) !== ""
+    function toolLabel(name) {
+        if (!name)
+            return "";
+        if (name === "default")
+            return "Steam's default";
+        for (var i = 0; i < steamTools.length; i++)
+            if (steamTools[i].name === name)
+                return steamTools[i].label;
+        return name;
+    }
+    // What Steam itself is set to for this game right now (from the last scan).
+    function steamUses(g) {
+        var id = Util.steamAppId(g);
+        for (var i = 0; i < apps.length; i++)
+            if (apps[i].appid === id)
+                return apps[i].proton || "";
+        return "";
+    }
+    function pickProton() {
+        if (!currentIsSteam) {
+            nudge.restart();
+            return;
+        }
+        var now = steamUses(current);
+        var list = [{ value: "default", label: "Steam's default",
+                      detail: steamDefaultTool ? toolLabel(steamDefaultTool) + ", from Steam's Compatibility settings" : "Whatever Steam's Compatibility settings say" }];
+        for (var i = 0; i < steamTools.length; i++)
+            list.push({ value: steamTools[i].name, label: steamTools[i].label,
+                        detail: steamTools[i].name === now ? "Steam uses this for the game right now" : "" });
+        list.push({ value: "", label: "Leave it to Steam",
+                    detail: "Wave won't change the setting" + (now ? " (now " + toolLabel(now) + ")" : "") });
+        flyout = "";
+        adding = true;
+        sheet.openChoices("proton", "Proton for " + current.title, list, current.proton || "");
+    }
+
+    function pickWallpaper() {
+        flyout = "";
+        adding = true;
+        sheet.openImages("wallpaper", "", !!cfg.wallpaper);
     }
 
     function pickCover() {
@@ -318,6 +366,7 @@ FocusScope {
         case Qt.Key_P: if (root.current) root.primeToggled(root.currentId); break;
         case Qt.Key_C: root.dockAction("colors"); break;
         case Qt.Key_I: root.pickCover(); break;
+        case Qt.Key_V: if (root.platform !== "windows") root.pickProton(); break;
         case Qt.Key_Comma: case Qt.Key_O: root.dockAction("settings"); break;
         case Qt.Key_Escape: case Qt.Key_Q: root.closeRequested(); break;
         default:
@@ -365,9 +414,50 @@ FocusScope {
                 GradientStop { position: 1.0; color: root.t.colors.panel }
             }
         }
+        // ---- wallpaper ----
+        // Decoded at the panel's size rather than the photo's, so a 4K picture
+        // costs no more memory than the window itself.
+        Image {
+            id: wallpaper
+            readonly property bool ready: root.cfg.wallpaper !== "" && status === Image.Ready
+            anchors.fill: parent
+            visible: ready
+            source: root.cfg.wallpaper ? root.art(root.cfg.wallpaper) : ""
+            asynchronous: true
+            cache: false
+            fillMode: Image.PreserveAspectCrop
+            sourceSize.width: Math.round(panel.width)
+            sourceSize.height: Math.round(panel.height)
+        }
+        Rectangle { // tint so text and tapes stay readable on any picture
+            anchors.fill: parent
+            visible: wallpaper.ready
+            radius: panel.radius
+            color: Util.alpha(root.t.colors.panel, root.cfg.wallpaperDim)
+        }
+        Rectangle {
+            anchors.fill: parent
+            visible: wallpaper.ready
+            radius: panel.radius
+            gradient: Gradient {
+                GradientStop { position: 0.55; color: Util.alpha(root.t.colors.panel, 0) }
+                GradientStop { position: 1.0; color: Util.alpha(root.t.colors.panel, Math.min(0.85, root.cfg.wallpaperDim + 0.3)) }
+            }
+        }
+
+        Rectangle { // trims the picture's square corners to the panel's round ones
+            visible: wallpaper.ready && panel.radius > 0
+            readonly property real m: panel.radius + 2
+            x: -m; y: -m
+            width: panel.width + 2 * m; height: panel.height + 2 * m
+            radius: panel.radius + m
+            color: "transparent"
+            border { width: m; color: Util.alpha(root.t.colors.backdrop, root.t.colors.backdropOpacity) }
+        }
+
         Scene {
             anchors.fill: parent
-            visible: root.t.style.scene
+            visible: root.t.style.scene && !wallpaper.ready
             ui: root
             level: heroBox.level
             radius: panel.radius
@@ -411,7 +501,7 @@ FocusScope {
         }
         Canvas { // the surface
             id: water
-            visible: root.hero
+            visible: root.hero && !wallpaper.ready
             anchors.fill: parent
             property real level: heroBox.level
             property string deep: root.t.colors.panel
@@ -775,6 +865,8 @@ FocusScope {
                         parts.push("★ Favorite");
                     if (root.current.prime || root.cfg.primeAll)
                         parts.push("Dedicated GPU");
+                    if (root.currentIsSteam && root.current.proton)
+                        parts.push(root.toolLabel(root.current.proton));
                     if (!root.current.exec)
                         parts.push("No launch command");
                     else if (n)
@@ -873,6 +965,8 @@ FocusScope {
                 x: root.px(6); y: root.px(6)
                 themes: Util.builtinThemes.indexOf(root.cfg.theme) >= 0 ? Util.builtinThemes : Util.builtinThemes.concat([root.cfg.theme])
                 onEdited: (key, value) => root.configEdited(key, value)
+                onWallpaperRequested: root.pickWallpaper()
+                height: drawerBox.height - root.px(12)
             }
             Rectangle { // hairline between drawer and buttons
                 x: drawerBox.inner - 1; y: root.px(26)
@@ -894,12 +988,14 @@ FocusScope {
                 { id: "sort", icon: "sort", label: root.sortMode.charAt(0).toUpperCase() + root.sortMode.slice(1), on: root.sortMode !== "manual" },
                 { id: "fav", icon: "star", label: "Favorite", on: !!root.current && root.favorites.indexOf(root.currentId) >= 0, color: "#ffd60a", filled: true },
                 { id: "gpu", icon: "gpu", label: "GPU", on: !!root.current && !!(root.current.prime || root.cfg.primeAll), color: "#30d158", filled: true },
+                { id: "proton", icon: "proton", label: "Proton", on: root.currentIsSteam && !!root.current.proton,
+                  disabled: !root.currentIsSteam, color: "#ff8a3d", filled: true },
                 { id: "cover", icon: "image", label: "Cover", on: !!root.current && !!root.current.cover },
                 { id: "remove", icon: "trash", label: root.removing !== "" && root.removing === root.currentId ? "Sure?" : "Remove",
                   on: root.removing !== "" && root.removing === root.currentId, color: "#ff453a" },
                 { id: "colors", icon: "drop", label: "Colours", on: root.flyout === "colors" },
                 { id: "settings", icon: "gear", label: "Settings", on: root.flyout === "settings" }
-            ].filter(function (i) { return !(root.platform === "windows" && i.id === "gpu"); })
+            ].filter(function (i) { return !(root.platform === "windows" && (i.id === "gpu" || i.id === "proton")); })
             onTriggered: id => root.dockAction(id)
         }
 
@@ -930,8 +1026,17 @@ FocusScope {
             groups: Util.groupsOf(root.games, root.cfg.groupOrder)
             homeDir: root.homeDir
             onAccepted: entry => root.finishAdding(entry)
-            onCoverPicked: path => {
-                root.coverChanged(root.currentId, path);
+            onImagePicked: path => {
+                if (sheet.purpose === "wallpaper")
+                    root.configEdited("wallpaper", path);
+                else
+                    root.coverChanged(root.currentId, path);
+                root.adding = false;
+                catcher.forceActiveFocus();
+            }
+            onChoicePicked: value => {
+                if (sheet.purpose === "proton")
+                    root.protonChanged(root.currentId, value);
                 root.adding = false;
                 catcher.forceActiveFocus();
             }

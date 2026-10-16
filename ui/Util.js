@@ -16,7 +16,9 @@ function defaultConfig() {
         closeOnLaunch: true,
         launchPrefix: "",       // e.g. "gamemoderun"
         gamemode: false,        // start games through gamemoderun (Feral GameMode)
-        steamQuiet: true,       // start Steam games without bringing up Steam's windows
+        steamQuiet: false,      // start Steam minimised when Wave has to start it
+        wallpaper: "",          // image behind the shelf
+        wallpaperDim: 0.45,     // how much the theme colour darkens it
         preload: false,         // keep the interface loaded while hidden: instant open, more idle memory
         quitOnLaunch: false,    // exit Wave completely while a game runs; the keybind brings it back
         primeAll: false,        // run every game on the dedicated GPU
@@ -312,14 +314,28 @@ function primePrefix(custom) {
 }
 
 // The command Wave actually runs for a game, given the config.
-function launchCommand(g, cfg, home) {
+// Steam app id of a game that starts through Steam, or "".
+function steamAppId(g) {
+    var m = /^(?:steam\s+)?steam:\/\/rungameid\/(\d{1,10})\s*$/.exec(String((g && g.exec) || ""));
+    return m ? m[1] : "";
+}
+
+function launchCommand(g, cfg, home, helper) {
     var cmd = String(g.exec);
-    var steam = /^steam\s+steam:\/\/rungameid\/(\d{1,9})\s*$/.exec(cmd);
-    if (steam) {
+    var appid = steamAppId(g);
+    if (appid) {
         // Steam owns the game process, so GPU and GameMode wrappers here would
         // only wrap the Steam client; those belong in the game's launch options.
-        if (cfg.steamQuiet !== false)
-            cmd = "steam -silent -nochatui -nofriendsui -applaunch " + steam[1];
+        // The helper switches Proton (restarting Steam if needed) and logs.
+        if (helper) {
+            cmd = shellQuote(helper) + " launch-steam " + appid;
+            if (g.proton)
+                cmd += " --proton " + shellQuote(g.proton);
+            if (cfg.steamQuiet)
+                cmd += " --quiet";
+        } else {
+            cmd = "steam " + (cfg.steamQuiet ? "-silent " : "") + "steam://rungameid/" + appid;
+        }
     } else {
         if (g.prime || cfg.primeAll)
             cmd = primePrefix(cfg.primeCommand) + " " + cmd;

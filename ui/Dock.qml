@@ -57,6 +57,7 @@ Item {
                 id: btn
                 required property var modelData
                 width: dock.width; height: dock.cell
+                opacity: modelData.disabled ? 0.32 : 1
                 readonly property string tint: modelData.on ? (modelData.color || dock.t.colors.accent) : "#3a3a3d"
 
                 Rectangle { // ring
@@ -88,6 +89,7 @@ Item {
                     id: area
                     anchors.fill: parent
                     hoverEnabled: true
+                    enabled: !btn.modelData.disabled
                     onClicked: dock.triggered(btn.modelData.id)
                 }
             }

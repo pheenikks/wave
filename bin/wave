@@ -9,6 +9,7 @@
   wave add "Title" --exec "command"   put a game on the shelf
   wave add --steam APPID              add an installed Steam game
   wave steam                          list installed Steam games and their APPIDs
+  wave proton ["Title" VERSION]       list Proton versions, or pick one for a Steam game
   wave prime "Title"       switch the dedicated GPU (PRIME) on or off for a game
   wave remove "Title"
   wave list
@@ -151,31 +152,316 @@ def steam_art(root, appid):
     return art
 
 
-NOT_GAMES = re.compile(r"^(Proton|Steam Linux Runtime|Steamworks Common|Steam Controller)", re.I)
+NOT_GAMES = re.compile(r"^(Proton|Steam Linux Runtime|Steamworks Common|Steam Controller|Steamworks Shared)", re.I)
+
+
+def steam_libraries(root):
+    libs = [root]
+    vdf = root / "steamapps/libraryfolders.vdf"
+    if vdf.is_file():
+        libs += [Path(m) for m in re.findall(r'"path"\s+"([^"]+)"', vdf.read_text(errors="ignore"))]
+    return list(dict.fromkeys(libs))
 
 
 def steam_games():
-    """Every installed Steam game: [{appid, name, cover?, logo?}]."""
+    """Every installed Steam game: [{appid, name, dir, cover?, logo?}]."""
     games = {}
     for root in dict.fromkeys(steam_roots()):
-        libs = [root]
-        vdf = root / "steamapps/libraryfolders.vdf"
-        if vdf.is_file():
-            libs += [Path(m) for m in re.findall(r'"path"\s+"([^"]+)"', vdf.read_text(errors="ignore"))]
-        for lib in dict.fromkeys(libs):
+        for lib in steam_libraries(root):
             for manifest in (lib / "steamapps").glob("appmanifest_*.acf"):
                 text = manifest.read_text(errors="ignore")
                 appid = re.search(r'"appid"\s+"(\d+)"', text)
                 name = re.search(r'"name"\s+"([^"]+)"', text)
                 if not appid or not name or NOT_GAMES.match(name.group(1)) or appid.group(1) in games:
                     continue
-                games[appid.group(1)] = {"appid": appid.group(1), "name": name.group(1), **steam_art(root, appid.group(1))}
+                installdir = re.search(r'"installdir"\s+"([^"]+)"', text)
+                entry = {"appid": appid.group(1), "name": name.group(1), **steam_art(root, appid.group(1))}
+                if installdir:
+                    entry["dir"] = str(lib / "steamapps/common" / installdir.group(1))
+                games[appid.group(1)] = entry
     return sorted(games.values(), key=lambda g: g["name"].lower())
 
 
+# ---- Steam's own settings (text VDF) ---------------------------------------
+# Values are kept exactly as written (escapes untouched), so a file is
+# written back unchanged apart from what Wave edits.
+
+def vdf_loads(text):
+    pos, n = 0, len(text)
+
+    def token():
+        nonlocal pos
+        while pos < n:
+            c = text[pos]
+            if c.isspace():
+                pos += 1
+            elif text.startswith("//", pos):
+                end = text.find("\n", pos)
+                pos = n if end < 0 else end + 1
+            else:
+                break
+        if pos >= n:
+            return None
+        c = text[pos]
+        if c in "{}":
+            pos += 1
+            return c
+        if c == '"':
+            start = pos = pos + 1
+            while pos < n and text[pos] != '"':
+                pos += 2 if text[pos] == "\\" else 1
+            value = text[start:pos]
+            pos += 1
+            return ("s", value)
+        start = pos
+        while pos < n and not text[pos].isspace() and text[pos] not in '{}"':
+            pos += 1
+        return ("s", text[start:pos])
+
+    def block():
+        out = {}
+        while True:
+            key = token()
+            if key is None or key == "}":
+                return out
+            if key == "{":
+                raise ValueError("unexpected {")
+            value = token()
+            if value is None:
+                raise ValueError("file ends after a key")
+            if isinstance(value, tuple) and value[1].startswith("[") and value[1].endswith("]"):
+                value = token()   # skip conditional tags like [$WIN32]
+            out[key[1]] = block() if value == "{" else value[1]
+
+    return block()
+
+
+def vdf_dumps(obj, depth=0):
+    out, pad = [], "\t" * depth
+    for key, value in obj.items():
+        if isinstance(value, dict):
+            out.append(f'{pad}"{key}"\n{pad}{{\n{vdf_dumps(value, depth + 1)}{pad}}}\n')
+        else:
+            out.append(f'{pad}"{key}"\t\t"{value}"\n')
+    return "".join(out)
+
+
+def vdf_child(node, key, create=False):
+    """Case-insensitive lookup (Steam writes both "Steam" and "steam")."""
+    for k in node:
+        if k.lower() == key.lower() and isinstance(node[k], dict):
+            return node[k]
+    if create:
+        node[key] = {}
+        return node[key]
+    return None
+
+
+def compat_mapping(config):
+    node = config
+    for key in ("InstallConfigStore", "Software", "Valve", "Steam", "CompatToolMapping"):
+        node = vdf_child(node, key)
+        if node is None:
+            return {}
+    return node
+
+
+def steam_config_file(root):
+    return root / "config/config.vdf"
+
+
+def read_steam_config(root):
+    path = steam_config_file(root)
+    try:
+        return vdf_loads(path.read_text(encoding="utf-8", errors="surrogateescape"))
+    except (OSError, ValueError):
+        return None
+
+
+def official_tool_name(folder):
+    """Steam's internal name for an official Proton folder ("Proton 9.0" -> proton_9)."""
+    low = folder.lower()
+    if "experimental" in low:
+        return "proton_experimental"
+    if "hotfix" in low:
+        return "proton_hotfix"
+    m = re.match(r"proton (\d+)\.(\d+)", low)
+    if not m:
+        return None
+    major, minor = m.groups()
+    return f"proton_{major}" if minor == "0" else f"proton_{major}{minor}"
+
+
+def compat_tools(root):
+    """Proton versions this Steam install can use: [{name, label}]."""
+    tools = {}
+    for lib in steam_libraries(root):
+        common = lib / "steamapps/common"
+        for d in sorted(common.glob("Proton*")) if common.is_dir() else []:
+            name = official_tool_name(d.name)
+            if name and (d / "proton").exists():
+                tools.setdefault(name, d.name)
+    for base in (root / "compatibilitytools.d", Path("/usr/share/steam/compatibilitytools.d"),
+                 Path("/usr/local/share/steam/compatibilitytools.d")):
+        for manifest in sorted(base.glob("*/compatibilitytool.vdf")) if base.is_dir() else []:
+            try:
+                data = vdf_loads(manifest.read_text(errors="ignore"))
+            except ValueError:
+                continue
+            for name, info in (vdf_child(data, "compatibilitytools") or {}).get("compat_tools", {}).items():
+                if isinstance(info, dict):
+                    tools.setdefault(name, info.get("display_name") or name)
+    config = read_steam_config(root) or {}
+    for entry in compat_mapping(config).values():   # names in use but not found on disk
+        if isinstance(entry, dict) and entry.get("name"):
+            tools.setdefault(entry["name"], entry["name"] + " (not found)")
+    def order(item):
+        name, label = item
+        number = re.search(r"(\d+)", label)
+        rank = {"proton_experimental": 0, "proton_hotfix": 1}.get(name, 2 if name.startswith("proton_") else 3)
+        return (rank, -int(number.group(1)) if number else 0, label.lower())
+    return [{"name": k, "label": v.replace(" - ", " ")} for k, v in sorted(tools.items(), key=order)]
+
+
 def cmd_scan(_):
-    """Refresh the list the launcher's Add screen offers (called by the launcher)."""
-    write(CACHE / "steam.json", steam_games())
+    """Refresh what the launcher's Add and Proton screens offer (called by the launcher)."""
+    games, tools, default, mapping = steam_games(), [], "", {}
+    roots = list(dict.fromkeys(steam_roots()))
+    if roots:
+        tools = compat_tools(roots[0])
+        current = compat_mapping(read_steam_config(roots[0]) or {})
+        default = (current.get("0") or {}).get("name", "") if isinstance(current.get("0"), dict) else ""
+        mapping = {k: v.get("name", "") for k, v in current.items() if isinstance(v, dict) and k != "0"}
+    for g in games:
+        if mapping.get(g["appid"]):
+            g["proton"] = mapping[g["appid"]]
+    write(CACHE / "steam.json", {"games": games, "tools": tools, "defaultTool": default})
+
+
+# ---- launching Steam games -------------------------------------------------
+
+LOG = CACHE / "launch.log"
+
+
+def log(*parts):
+    CACHE.mkdir(parents=True, exist_ok=True)
+    with open(LOG, "a") as f:
+        f.write(time.strftime("%H:%M:%S ") + " ".join(str(p) for p in parts) + "\n")
+
+
+def notify(text):
+    if shutil.which("notify-send"):
+        subprocess.Popen(["notify-send", "-a", "Wave", "-i", "wave", "Wave", text],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def steam_running():
+    pids = []
+    for d in Path("/proc").iterdir():
+        if d.name.isdigit():
+            try:
+                if (d / "comm").read_text().strip() in ("steam", "steamwebhelper"):
+                    pids.append(int(d.name))
+            except OSError:
+                pass
+    return pids
+
+
+def steam_command(root):
+    if ".var/app/com.valvesoftware.Steam" in str(root) and shutil.which("flatpak"):
+        return ["flatpak", "run", "com.valvesoftware.Steam"]
+    if shutil.which("steam"):
+        return ["steam"]
+    return [str(root / "steam.sh")]
+
+
+def root_for(appid):
+    roots = list(dict.fromkeys(steam_roots()))
+    for root in roots:
+        for lib in steam_libraries(root):
+            if (lib / "steamapps" / f"appmanifest_{appid}.acf").is_file():
+                return root
+    return roots[0] if roots else None
+
+
+def set_proton(root, appid, tool):
+    """Make Steam's config match: tool name, or "default" for no per-game choice.
+    Returns True if the file changed. Steam must not be running."""
+    path = steam_config_file(root)
+    config = read_steam_config(root)
+    if config is None:
+        raise RuntimeError(f"could not read {path}")
+    node = config
+    for key in ("InstallConfigStore", "Software", "Valve", "Steam", "CompatToolMapping"):
+        node = vdf_child(node, key, create=True)
+    entry = node.get(appid) if isinstance(node.get(appid), dict) else None
+    if tool == "default":
+        if entry is None:
+            return False
+        del node[appid]
+    else:
+        if entry and entry.get("name") == tool:
+            return False
+        node[appid] = {"name": tool, "config": "", "priority": "250"}
+    shutil.copyfile(path, path.with_name("config.vdf.wave-backup"))
+    tmp = path.with_name("config.vdf.wave-tmp")
+    tmp.write_text(vdf_dumps(config), encoding="utf-8", errors="surrogateescape")
+    os.replace(tmp, path)
+    return True
+
+
+def needs_change(root, appid, tool):
+    entry = compat_mapping(read_steam_config(root) or {}).get(appid)
+    current = entry.get("name", "") if isinstance(entry, dict) else ""
+    return current != ("" if tool == "default" else tool)
+
+
+def cmd_launch_steam(a):
+    """Start a Steam game, switching its Proton version first if asked to."""
+    LOG.parent.mkdir(parents=True, exist_ok=True)
+    LOG.write_text("")   # the log only ever holds the latest launch
+    appid = a.appid
+    root = root_for(appid)
+    log("launch", appid, "proton:", a.proton or "(not managed)", "root:", root)
+    if root is None:
+        log("no Steam install found")
+        notify("Steam does not seem to be installed.")
+        return
+    cmd = steam_command(root)
+
+    if a.proton and needs_change(root, appid, a.proton):
+        if steam_running():
+            log("Steam is running; closing it to change the Proton version")
+            notify("Restarting Steam to switch the Proton version…")
+            try:
+                subprocess.run([*cmd, "-shutdown"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20)
+            except (OSError, subprocess.TimeoutExpired) as err:
+                log("steam -shutdown:", err)
+            for _ in range(80):
+                if not steam_running():
+                    break
+                time.sleep(0.5)
+        if steam_running():
+            log("Steam did not close in time; launching without changing Proton")
+            notify("Steam did not close, so the Proton version was not changed.")
+        else:
+            try:
+                changed = set_proton(root, appid, a.proton)
+                log("config.vdf", "updated" if changed else "already matched")
+            except (OSError, RuntimeError) as err:
+                log("could not change Proton:", err)
+                notify(f"Could not change the Proton version: {err}")
+
+    running = bool(steam_running())
+    args = [*cmd, *(["-silent"] if a.quiet else []), f"steam://rungameid/{appid}"]
+    log("running:", " ".join(args), "(Steam was running)" if running else "(starting Steam)")
+    if running:
+        # Steam only passes the request on to the running client, so its output is short.
+        out = open(LOG, "a")
+    else:
+        out = subprocess.DEVNULL
+        log("Steam's own logs are in", root / "logs")
+    subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=out, stderr=out, start_new_session=True)
 
 
 def cmd_steam(_):
@@ -184,6 +470,35 @@ def cmd_steam(_):
         print("No installed Steam games found.")
     for g in games:
         print(f"{g['appid']:>9}  {g['name']}")
+
+
+def cmd_proton(a):
+    roots = list(dict.fromkeys(steam_roots()))
+    if not roots:
+        die("no Steam install found")
+    if not a.title:
+        print("Proton versions Steam can use:")
+        for t in compat_tools(roots[0]):
+            print(f"  {t['name']:<28} {t['label']}")
+        return
+    games = read(GAMES, [])
+    gid = slug(a.title)
+    for g in games:
+        if slug(g.get("id") or g.get("title")) == gid:
+            if not re.search(r"steam://rungameid/\d+", g.get("exec", "")):
+                die(f"\"{g['title']}\" is not a Steam game")
+            if not a.version:
+                print(g.get("proton") or "not set (Steam decides)")
+                return
+            if a.version == "none":
+                g.pop("proton", None)
+            else:
+                g["proton"] = a.version
+            write(GAMES, games)
+            print(f"\"{g['title']}\": " + ("Steam decides" if a.version == "none" else a.version)
+                  + ". It is applied the next time you start the game from Wave.")
+            return
+    die(f"nothing called \"{a.title}\" on the shelf (see: wave list)")
 
 
 # ---- commands --------------------------------------------------------------
@@ -394,10 +709,19 @@ def main():
     p.set_defaults(fn=cmd_prime)
     sub.add_parser("list").set_defaults(fn=cmd_list)
     sub.add_parser("scan").set_defaults(fn=cmd_scan)
+    p = sub.add_parser("launch-steam", help="start a Steam game (used by the launcher)")
+    p.add_argument("appid")
+    p.add_argument("--proton", help="tool name, or 'default' for Steam's default")
+    p.add_argument("--quiet", action="store_true", help="start Steam minimised if it is not running")
+    p.set_defaults(fn=cmd_launch_steam)
     sub.add_parser("mem").set_defaults(fn=cmd_mem)
     sub.add_parser("update").set_defaults(fn=cmd_update)
     sub.add_parser("uninstall").set_defaults(fn=cmd_uninstall)
     sub.add_parser("steam").set_defaults(fn=cmd_steam)
+    p = sub.add_parser("proton", help="list Proton versions, or set one for a Steam game")
+    p.add_argument("title", nargs="?")
+    p.add_argument("version", nargs="?", help="tool name, 'default' for Steam's default, 'none' to stop managing it")
+    p.set_defaults(fn=cmd_proton)
     sub.add_parser("edit").set_defaults(fn=cmd_edit)
     p = sub.add_parser("theme")
     p.add_argument("name", nargs="?")

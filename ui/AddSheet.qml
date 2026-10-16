@@ -25,8 +25,13 @@ FocusScope {
     property bool hasCover: false      // it already has one (offers "remove")
     readonly property var imageTypes: ["png", "jpg", "jpeg", "webp", "bmp", "gif", "avif"]
 
+    property var choices: []           // pick mode: [{ value, label, detail }]
+    property string choiceNow: ""      // the value currently in effect
+    property string pickTitle: ""
+
     signal accepted(var entry)
-    signal coverPicked(string path)    // "" removes the custom cover
+    signal imagePicked(string path)    // cover or wallpaper; "" removes it
+    signal choicePicked(string value)
     signal closed()
 
     readonly property var t: ui.t
@@ -42,16 +47,46 @@ FocusScope {
         }
         return f.slice(0, f.lastIndexOf("/")) || "/";
     }
-    readonly property var rows: mode === "files" ? fileRows(input.text) : appRows(input.text)
+    readonly property var rows: mode === "files" ? fileRows(input.text) : mode === "pick" ? pickRows(input.text) : appRows(input.text)
 
-    function openForCover(title, has) {
-        purpose = "cover";
+    function openForCover(title, has) { openImages("cover", title, has); }
+
+    // purpose: "cover" or "wallpaper"
+    function openImages(what, title, has) {
+        purpose = what;
         coverFor = title;
         hasCover = has;
         mode = "files";
         input.text = "";
         index = rows.length > 1 && rows[0].kind === "up" ? 1 : 0;
         input.forceActiveFocus();
+    }
+
+    // A list to choose one value from (the Proton version, for now).
+    function openChoices(what, title, list, current) {
+        purpose = what;
+        pickTitle = title;
+        choices = list;
+        choiceNow = current;
+        mode = "pick";
+        input.text = "";
+        for (var i = 0; i < rows.length; i++)
+            if (rows[i].value === current)
+                index = i;
+        input.forceActiveFocus();
+    }
+
+    function pickRows(q) {
+        q = q.toLowerCase();
+        var out = [];
+        for (var i = 0; i < choices.length; i++) {
+            var c = choices[i];
+            if (q && (c.label + " " + c.value).toLowerCase().indexOf(q) < 0)
+                continue;
+            out.push({ kind: "choice", value: c.value, name: c.label, detail: c.detail || "",
+                       tag: c.value === choiceNow ? "Current" : "" });
+        }
+        return out;
     }
 
     function open() {
@@ -98,7 +133,7 @@ FocusScope {
 
     function fileRows(q) {
         var out = [];
-        var covers = purpose === "cover";
+        var covers = purpose === "cover" || purpose === "wallpaper";   // pictures only
         if (win && folder === "") { // the list of drives
             for (var d = 0; d < ui.drives.length; d++)
                 out.push({ kind: "dir", name: ui.drives[d], detail: "", tag: "Drive", path: ui.drives[d] });
@@ -121,18 +156,20 @@ FocusScope {
             out.push({ kind: f.dir ? "dir" : "file", name: f.name + (f.dir ? "/" : ""), detail: "", tag: f.dir ? "" : f.suffix.toUpperCase(), path: f.path });
         }
         if (covers && hasCover && !q) // last, so Enter never lands on it by accident
-            out.push({ kind: "clear", name: "Remove the custom cover", detail: "Go back to the drawn box art", tag: "" });
+            out.push(purpose === "wallpaper"
+                     ? { kind: "clear", name: "Remove the wallpaper", detail: "Go back to the theme's background", tag: "" }
+                     : { kind: "clear", name: "Remove the custom cover", detail: "Go back to the drawn box art", tag: "" });
         return out;
     }
 
     // Start on the most useful row: the first match, not "browse" or ".."
-    onRowsChanged: index = rows.length > 1 && (rows[0].kind === "up" || (mode === "apps" && input.text)) ? 1 : 0
+    onRowsChanged: index = mode === "pick" ? 0 : rows.length > 1 && (rows[0].kind === "up" || (mode === "apps" && input.text)) ? 1 : 0
 
     FolderListModel {
         id: dir
         folder: sheet.folder === "" ? "" : Util.fileUrl(sheet.folder)
         showDirsFirst: true
-        showHidden: false
+        showHidden: input.text.indexOf(".") === 0   // type a dot to see hidden folders such as .local
         showDotAndDotDot: false
         sortField: FolderListModel.Name
         onStatusChanged: if (status === FolderListModel.Ready) sheet.readFolder()
@@ -151,7 +188,23 @@ FocusScope {
         return name.replace(/\b[a-z]/g, function (c) { return c.toUpperCase(); });
     }
 
+    // The Steam game whose install folder holds this file, if any.
+    function steamGameFor(path) {
+        for (var i = 0; i < apps.length; i++) {
+            var a = apps[i];
+            if (a.source === "steam" && a.dir && path.indexOf(a.dir + "/") === 0)
+                return a;
+        }
+        return null;
+    }
+
     function fromFile(path) {
+        var game = win ? null : steamGameFor(path);
+        if (game) // running a Steam game's files directly skips Proton and Steam's runtime
+            return { title: game.name, exec: game.exec, cover: game.cover || "", logo: game.logo || "", group: "Steam",
+                     note: "This file belongs to the Steam game \u201c" + game.name + "\u201d, so Wave starts it through Steam. "
+                         + "Run on its own it would miss Proton and the libraries Steam provides (such as Vulkan). "
+                         + "Pick its Proton version with the Proton button after adding it." };
         var base = path.slice(path.lastIndexOf("/") + 1);
         var where = parentOf(path);
         var dot = base.lastIndexOf(".");
@@ -177,6 +230,16 @@ FocusScope {
         return d;
     }
 
+    function goTo(path) {
+        path = String(path).trim().replace(/\\/g, "/");
+        if (path.indexOf("~") === 0)
+            path = homeDir + path.slice(1);
+        if (path.length > 1 && !/^[A-Za-z]:\/$/.test(path))
+            path = path.replace(/\/+$/, "");
+        folder = path;
+        input.text = "";
+    }
+
     function activate(row) {
         if (!row)
             return;
@@ -190,13 +253,15 @@ FocusScope {
             folder = row.path;
             input.text = "";
         } else if (row.kind === "image") {
-            coverPicked(row.path);
+            imagePicked(row.path);
         } else if (row.kind === "clear") {
-            coverPicked("");
+            imagePicked("");
+        } else if (row.kind === "choice") {
+            choicePicked(row.value);
         } else {
             if (row.kind === "app")
                 draft = { title: row.app.name, exec: String(row.app.exec || "").replace(/%%/g, "\u0000").replace(/\s*%[a-zA-Z]/g, "").replace(/\u0000/g, "%").trim(), icon: row.app.icon || "", cover: row.app.cover || "", logo: row.app.logo || "", group: row.app.group || "",
-                          note: row.app.source === "steam" ? "Steam game: starts through the Steam client." : "" };
+                          note: row.app.source === "steam" ? "Steam game: starts through Steam. Choose its Proton version with the Proton button once it is on the shelf." : "" };
             else if (row.kind === "command")
                 draft = { title: pretty(input.text.trim().split(/\s+/)[0].split("/").pop()), exec: input.text.trim(), note: "" };
             else
@@ -281,7 +346,9 @@ FocusScope {
             elide: Text.ElideMiddle
             color: sheet.ui.accentText
             font.capitalization: Font.MixedCase
-            text: sheet.purpose === "cover" ? "COVER FOR " + sheet.coverFor.toUpperCase() + "  /  " + sheet.folder.replace(sheet.homeDir, "~")
+            text: sheet.mode === "pick" ? sheet.pickTitle.toUpperCase()
+                : sheet.purpose === "wallpaper" ? "WALLPAPER  /  " + sheet.folder.replace(sheet.homeDir, "~")
+                : sheet.purpose === "cover" ? "COVER FOR " + sheet.coverFor.toUpperCase() + "  /  " + sheet.folder.replace(sheet.homeDir, "~")
                 : sheet.mode === "files" ? "ADD A GAME  /  " + sheet.folder.replace(sheet.homeDir, "~")
                 : sheet.mode === "confirm" ? "ADD A GAME  /  CHECK THE DETAILS" : "ADD A GAME"
         }
@@ -290,7 +357,7 @@ FocusScope {
             ui: sheet.ui
             anchors { right: parent.right; rightMargin: card.pad; verticalCenter: heading.verticalCenter }
             color: t.colors.muted
-            text: sheet.mode === "apps" || sheet.purpose === "cover" ? "Esc / Cancel" : "Esc / Back"
+            text: sheet.mode === "apps" || sheet.purpose !== "game" ? "Esc / Cancel" : "Esc / Back"
             MouseArea { anchors.fill: parent; anchors.margins: -ui.px(8); onClicked: sheet.back() }
         }
 
@@ -308,7 +375,9 @@ FocusScope {
                 Text {
                     anchors { left: parent.left; leftMargin: ui.px(14); verticalCenter: parent.verticalCenter }
                     visible: input.text === ""
-                    text: sheet.purpose === "cover" ? "Type to filter the pictures in this folder" : sheet.mode === "files" ? "Type to filter this folder" : "Type an app name or a command"
+                    text: sheet.mode === "pick" ? "Type to filter"
+                        : sheet.mode === "files" ? (sheet.purpose !== "game" ? "Filter the pictures, or type a path like ~/Pictures" : "Filter, or type a path like ~/Games (a dot shows hidden folders)")
+                        : "Type an app name or a command"
                     color: t.colors.muted
                     font: input.font
                 }
@@ -332,7 +401,10 @@ FocusScope {
                         } else if (e.key === Qt.Key_PageUp) {
                             sheet.index = Math.max(0, sheet.index - 8);
                         } else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) {
-                            sheet.activate(sheet.rows[sheet.index]);
+                            if (sheet.mode === "files" && /^(~|\/|[A-Za-z]:[\\/])/.test(text))
+                                sheet.goTo(text);  // a typed path: go straight there
+                            else
+                                sheet.activate(sheet.rows[sheet.index]);
                         } else if (e.key === Qt.Key_Escape) {
                             sheet.back();
                         } else if (e.key === Qt.Key_Backspace && text === "" && sheet.mode === "files") {
@@ -380,7 +452,7 @@ FocusScope {
                         width: Math.min(implicitWidth, parent.width * 0.55)
                         elide: Text.ElideRight
                         text: row.modelData.name
-                        color: row.modelData.kind === "browse" || row.modelData.kind === "command" || row.modelData.kind === "clear" ? sheet.ui.accentText : t.colors.text
+                        color: row.modelData.kind === "browse" || row.modelData.kind === "command" || row.modelData.kind === "clear" || row.modelData.tag === "Current" ? sheet.ui.accentText : t.colors.text
                         font { family: t.fonts.label; pixelSize: ui.px(15); weight: Font.Medium }
                     }
                     Text {
@@ -460,8 +532,8 @@ FocusScope {
                     }
                 }
             }
-            Item { // dedicated-GPU switch
-                visible: !sheet.win
+            Item { // dedicated-GPU switch (not for Steam games: Steam starts those itself)
+                visible: !sheet.win && !/steam:\/\/rungameid/.test(execIn.text)
                 width: parent.width; height: ui.px(30)
                 Rectangle {
                     id: tick

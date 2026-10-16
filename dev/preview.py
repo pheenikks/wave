@@ -138,6 +138,16 @@ def main():
                     g.pop("cover", None)
         item.setProperty("games", games)
 
+    def proton(gid, value):
+        for g in games:
+            if slug(g.get("id") or g["title"]) == gid:
+                if value:
+                    g["proton"] = value
+                else:
+                    g.pop("proton", None)
+        item.setProperty("games", games)
+
+    item.protonChanged.connect(proton)
     item.coverChanged.connect(cover)
     item.primeToggled.connect(prime)
     item.addRequested.connect(add)

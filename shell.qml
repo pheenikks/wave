@@ -25,6 +25,8 @@ ShellRoot {
     property var config: ({})
     property var games: []            // only what is in ~/.config/wave/games.json
     property var steamGames: []       // installed Steam games, found by `wave scan`
+    property var steamTools: []       // Proton versions Steam can use
+    property string steamDefaultTool: ""
     property var stats: ({})
     property string selected: ""
     property var userTheme: null
@@ -65,7 +67,7 @@ ShellRoot {
     }
 
     function launch(g) {
-        var cmd = Util.launchCommand(g, config, home);
+        var cmd = Util.launchCommand(g, config, home, Quickshell.shellDir + "/bin/wave");
         Quickshell.execDetached(["sh", "-c", cmd]);
 
         var id = Util.gameId(g);
@@ -91,7 +93,8 @@ ShellRoot {
             steamIds[sg.appid] = true;
             out.push({
                 name: sg.name, exec: "steam steam://rungameid/" + sg.appid, icon: "",
-                cover: sg.cover || "", logo: sg.logo || "",
+                cover: sg.cover || "", logo: sg.logo || "", appid: sg.appid, dir: sg.dir || "",
+                proton: sg.proton || "",
                 comment: "Steam", game: true, source: "steam", group: "Steam"
             });
         }
@@ -159,6 +162,20 @@ ShellRoot {
         saveGames();
     }
 
+    function setProton(id, value) {
+        games = games.map(function (g) {
+            if (Util.gameId(g) !== id)
+                return g;
+            var next = Object.assign({}, g);
+            if (value)
+                next.proton = value;
+            else
+                delete next.proton;
+            return next;
+        });
+        saveGames();
+    }
+
     function togglePrime(id) {
         games = games.map(function (g) {
             if (Util.gameId(g) !== id)
@@ -212,7 +229,16 @@ ShellRoot {
         path: root.cacheDir + "/steam.json"
         printErrors: false
         onLoaded: {
-            try { root.steamGames = JSON.parse(text()); } catch (err) { root.steamGames = []; }
+            try {
+                var data = JSON.parse(text());
+                if (Array.isArray(data))
+                    data = { games: data };   // written by an older Wave
+                root.steamGames = data.games || [];
+                root.steamTools = data.tools || [];
+                root.steamDefaultTool = data.defaultTool || "";
+            } catch (err) {
+                root.steamGames = [];
+            }
         }
     }
     FileView {
@@ -308,6 +334,9 @@ ShellRoot {
                     onRemoveRequested: id => root.removeGame(id)
                     onPrimeToggled: id => root.togglePrime(id)
                     onCoverChanged: (id, path) => root.setCover(id, path)
+                    onProtonChanged: (id, value) => root.setProton(id, value)
+                    steamTools: root.steamTools
+                    steamDefaultTool: root.steamDefaultTool
                     onConfigEdited: (key, value) => root.setConfig(key, value)
                 }
             }

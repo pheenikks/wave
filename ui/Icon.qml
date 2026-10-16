@@ -95,6 +95,16 @@ Canvas {
             c.beginPath(); c.arc(9, 10, 1.6, 0, Math.PI * 2); c.stroke();
             c.beginPath(); c.moveTo(4.5, 17); c.lineTo(10, 12.5); c.lineTo(13, 15); c.lineTo(16, 12); c.lineTo(19.5, 15.5); c.stroke();
             break;
+        case "proton": // an atom: nucleus and two orbits
+            c.beginPath(); c.arc(12, 12, 1.9, 0, Math.PI * 2); c.fill();
+            for (i = 0; i < 2; i++) {
+                c.save();
+                c.translate(12, 12);
+                c.rotate((i ? -1 : 1) * Math.PI / 4);
+                c.beginPath(); c.ellipse(-9, -4, 18, 8); c.stroke();
+                c.restore();
+            }
+            break;
         case "check":
             c.beginPath(); c.moveTo(5.5, 12.5); c.lineTo(10, 17); c.lineTo(18.5, 7.5); c.stroke();
             break;
